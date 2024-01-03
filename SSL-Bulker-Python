@@ -1,0 +1,145 @@
+import os
+import datetime
+import socket
+import pickle  # Added for serialization
+from cryptography import x509
+from urllib.request import ssl
+import OpenSSL
+from datetime import timezone
+
+# Clear the terminal
+os.system('clear' if os.name == 'posix' else 'cls')
+
+# Define colors
+RED = "\033[1;31m"  # Red
+GREEN = "\033[1;32m"  # Green
+ORANGE = "\033[38;5;208m"  # Orange
+RESET = "\033[0m"  # Reset to default color
+WHITE = "\033[97m"  # White
+
+# Function to save certificate data to a temporary file
+def save_certificate_data(domains, certificate_data):
+    with open('temp_cert_data.pkl', 'wb') as file:
+        pickle.dump({'domains': domains, 'certificate_data': certificate_data}, file)
+
+# Function to load certificate data from a temporary file
+def load_certificate_data():
+    try:
+        with open('temp_cert_data.pkl', 'rb') as file:
+            data = pickle.load(file)
+            return data['domains'], data['certificate_data']
+    except FileNotFoundError:
+        return None, None
+
+# Function to get certificate expiry using alternative method
+def get_num_days_before_expired(hostname: str, port: str = '443') -> int:
+    context = ssl.SSLContext()
+    with socket.create_connection((hostname, port)) as sock:
+        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+            certificate = ssock.getpeercert(True)
+            cert = ssl.DER_cert_to_PEM_cert(certificate)
+            x509_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
+            cert_expires = datetime.datetime.strptime(
+                x509_cert.get_notAfter().decode('utf-8'), '%Y%m%d%H%M%SZ'
+            ).replace(tzinfo=timezone.utc)
+            num_days = (cert_expires - datetime.datetime.now(timezone.utc)).days
+            return num_days
+
+# Function to get certificate expiry date
+def get_certificate_expiry(domain):
+    try:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        with socket.create_connection((domain, 443)) as sock:
+            with context.wrap_socket(sock, server_hostname=domain) as ssock:
+                data = ssock.getpeercert(True)
+                pem_data = ssl.DER_cert_to_PEM_cert(data)
+                cert_data = x509.load_pem_x509_certificate(pem_data)
+                return cert_data.not_valid_after
+    except ssl.CertificateError as e:
+        return "Certificate expired or hostname mismatch"
+    except Exception as e:
+        return datetime.datetime.now() + datetime.timedelta(days=get_num_days_before_expired(domain))
+
+# Function to determine color based on certificate validity
+def determine_color(expiry_date):
+    if isinstance(expiry_date, str):
+        return RED  # Red for problematic certificates
+    today = datetime.datetime.now()
+    delta = expiry_date - today
+    if delta.days <= 0:
+        return RED  # Red for expired certificates
+    elif delta.days <= 28:
+        return ORANGE  # Orange for within 4 weeks
+    else:
+        return GREEN  # Green for more than 4 weeks
+
+# Function to display domain and certificate information from host.list
+def check_certificates(domains, original_domains=None, certificate_data=None):
+    os.system('clear' if os.name == 'posix' else 'cls')  # Clear the terminal
+
+    if certificate_data is None:
+        certificate_data = {}  # Initialize an empty dictionary for certificate data
+
+    if original_domains is None:
+        original_domains = domains[:]  # Make a copy of domains when it's not sorted
+
+    max_domain_width = max(len(domain) for domain in domains)
+    max_expiry_width = len("Exp Date")
+
+    print(f"{WHITE}{'Domain'.ljust(max_domain_width)} {'Exp Date'.ljust(max_expiry_width + 2)}{RESET}")
+    print(f"{'-' * max_domain_width} {'-' * (max_expiry_width + 2)}")
+
+    for domain in domains:
+        try:
+            expiry_date = certificate_data.get(domain)
+            if expiry_date is None:
+                expiry_date = get_certificate_expiry(domain)
+                certificate_data[domain] = expiry_date  # Save the certificate data
+
+            color_code = determine_color(expiry_date)
+
+            if isinstance(expiry_date, datetime.datetime):
+                formatted_date = expiry_date.strftime("%b %e %Y").replace('  ', ' ')
+                if color_code == RED:
+                    formatted_date = formatted_date.split('-')[0]
+                print(f"{WHITE}{domain.ljust(max_domain_width)} {color_code}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
+            else:
+                print(f"{WHITE}{domain.ljust(max_domain_width)} {color_code}{expiry_date}{RESET}")
+        except Exception as e:
+            print(f"{WHITE}{domain.ljust(max_domain_width)} {RED}Error: {str(e)}{RESET}")
+
+    print(f"{'-' * max_domain_width} {'-' * (max_expiry_width + 2)}")
+    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Exit script\nChoice: ")
+    if sort_choice == '1':
+        domains.sort(key=lambda x: certificate_data.get(x))
+        save_certificate_data(domains, certificate_data)  # Save sorted data
+        check_certificates(domains, original_domains, certificate_data)
+    elif sort_choice == '2':
+        domains[:] = original_domains[:]  # Restore original order
+        check_certificates(domains, original_domains, certificate_data)
+    elif sort_choice == '3':
+        print("Exiting the script.")
+        try:
+            os.remove('temp_cert_data.pkl')  # Remove temporary file on script exit
+        except FileNotFoundError:
+            pass  # File already removed or doesn't exist
+        exit()
+    else:
+        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, or '3' to exit the script.")
+
+# Load certificate data from a temporary file if available
+stored_domains, stored_certificate_data = load_certificate_data()
+
+# Read domains from host.list file and check certificates
+with open('host.list', 'r') as file:
+    domains = file.readlines()
+    domains = [domain.strip() for domain in domains]
+
+    # Use stored data if available
+    if stored_domains == domains:
+        check_certificates(domains, domains, stored_certificate_data)
+    else:
+        check_certificates(domains)
