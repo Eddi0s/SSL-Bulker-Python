@@ -78,8 +78,14 @@ def update_status(domains_scanned, total_domains):
     os.system('clear' if os.name == 'posix' else 'cls')
     print(f"Scanning status: {domains_scanned}/{total_domains} domains scanned\n")
 
-# Function to check certificates and display domain information
+# Function to sort by server name
+def sort_by_server_name(domains, certificate_data):
+    sorted_domains = sorted(domains, key=lambda x: certificate_data['server_names'].get(x, ''))
+    save_certificate_data(sorted_domains, certificate_data)
+    os.system('clear' if os.name == 'posix' else 'cls')
+    check_certificates(sorted_domains, domains, certificate_data)
 
+# Function to check certificates and display domain information
 def check_certificates(domains, original_domains=None, certificate_data=None):
     if certificate_data is None:
         certificate_data = {'ip_addresses': {}, 'server_names': {}}
@@ -146,7 +152,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
     print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)}")
 
-    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Exit script\nChoice: ")
+    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Sort by Server Name\n[5] Exit script\nChoice: ")
     if sort_choice == '1':
         domains.sort(key=lambda x: certificate_data.get(x))
         save_certificate_data(domains, certificate_data)
@@ -161,6 +167,8 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
         os.system('clear' if os.name == 'posix' else 'cls')
         check_certificates(sorted_domains, original_domains, certificate_data)
     elif sort_choice == '4':
+        sort_by_server_name(domains, certificate_data)
+    elif sort_choice == '5':
         print("Exiting the script.")
         try:
             os.remove('temp_cert_data.pkl')
@@ -168,9 +176,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
             pass
         exit()
     else:
-        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, or '4' to exit the script.")
-
-
+        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, '4' to sort by Server Name, or '5' to exit the script.")
 
 # Load certificate data from a temporary file if available
 stored_domains, stored_certificate_data = load_certificate_data()
