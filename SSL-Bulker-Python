@@ -106,8 +106,8 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
     max_domain_width = max(len(domain) for domain in domains)
     max_expiry_width = len("Exp Date")
     max_ipv4_width = len("255.255.255.255")
-    max_server_name_width = 30  # Nieuwe kolom voor Servernaam
-    max_nameserver_width = 30  # New column width for nameserver
+    max_server_name_width = 30
+    max_nameserver_width = 30
 
     update_status(0, len(domains))  # Initial status update
 
@@ -124,8 +124,8 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
             os.system('clear' if os.name == 'posix' else 'cls')
             print(f"Scanning status: {index}/{len(domains)} domains scanned\n")
-            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Server Name'.ljust(max_server_name_width)} {'Exp Date'.ljust(max_expiry_width + 2)} {'Nameserver'.ljust(max_nameserver_width)}")
-            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)} {'-' * max_nameserver_width}")
+            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Server Name'.ljust(max_server_name_width)} {'Nameserver'.ljust(max_nameserver_width)} {'Exp Date'.ljust(max_expiry_width + 2)}")
+            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * max_nameserver_width} {'-' * (max_expiry_width + 2)}")
 
             for d in domains[:index]:
                 expiry = certificate_data[d]
@@ -162,16 +162,16 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
                     nameserver_display = nameserver if nameserver else 'N/A'
                     nameserver_display = nameserver_display.ljust(max_nameserver_width)
 
-                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {server_name_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET} {nameserver_display}")
+                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {server_name_display} {nameserver_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
                 else:
-                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {color}{expiry}{RESET} {''.ljust(max_nameserver_width)}")
+                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {''.ljust(max_nameserver_width)} {color}{expiry}{RESET}")
 
         except Exception as e:
-            print(f"{domain.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {RED}Error: {str(e)}{RESET}")
+            print(f"{domain.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {''.ljust(max_nameserver_width)} {RED}Error: {str(e)}{RESET}")
 
-    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)} {'-' * max_nameserver_width}")
+    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * max_nameserver_width} {'-' * (max_expiry_width + 2)}")
 
-    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Sort by Server Name\n[5] Exit script\nChoice: ")
+    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Sort by Server Name\n[5] Sort by Name Server\n[6] Exit script\nChoice: ")
     if sort_choice == '1':
         domains.sort(key=lambda x: certificate_data.get(x))
         save_certificate_data(domains, certificate_data)
@@ -188,6 +188,11 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
     elif sort_choice == '4':
         sort_by_server_name(domains, certificate_data)
     elif sort_choice == '5':
+        sorted_domains = sorted(domains, key=lambda x: certificate_data['nameservers'].get(x, ''))
+        save_certificate_data(sorted_domains, certificate_data)
+        os.system('clear' if os.name == 'posix' else 'cls')
+        check_certificates(sorted_domains, original_domains, certificate_data)
+    elif sort_choice == '6':
         print("Exiting the script.")
         try:
             os.remove('temp_cert_data.pkl')
@@ -195,7 +200,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
             pass
         exit()
     else:
-        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, '4' to sort by Server Name, or '5' to exit the script.")
+        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, '4' to sort by Server Name, '5' to sort by Name Server, or '6' to exit the script.")
 
 # Load certificate data from a temporary file if available
 stored_domains, stored_certificate_data = load_certificate_data()
