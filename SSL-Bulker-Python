@@ -79,18 +79,20 @@ def update_status(domains_scanned, total_domains):
     print(f"Scanning status: {domains_scanned}/{total_domains} domains scanned\n")
 
 # Function to check certificates and display domain information
+
 def check_certificates(domains, original_domains=None, certificate_data=None):
     if certificate_data is None:
-        certificate_data = {'ip_addresses': {}}
+        certificate_data = {'ip_addresses': {}, 'server_names': {}}
 
     if original_domains is None:
         original_domains = domains[:]
 
     max_domain_width = max(len(domain) for domain in domains)
     max_expiry_width = len("Exp Date")
-    max_ipv4_width = len("255.255.255.255")  # Maximale lengte van een IPv4-adres
+    max_ipv4_width = len("255.255.255.255")
+    max_server_name_width = 30  # Nieuwe kolom voor Servernaam
 
-    update_status(0, len(domains))  # Initial status update
+    update_status(0, len(domains))  # Initiële statusupdate
 
     for index, domain in enumerate(domains, start=1):
         try:
@@ -103,10 +105,10 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
             update_status(index, len(domains))
 
-            os.system('clear' if os.name == 'posix' else 'cls')  # Clearing the screen before each domain print
+            os.system('clear' if os.name == 'posix' else 'cls')
             print(f"Scanning status: {index}/{len(domains)} domains scanned\n")
-            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Exp Date'.ljust(max_expiry_width + 2)}")
-            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * (max_expiry_width + 2)}")
+            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Server Name'.ljust(max_server_name_width)} {'Exp Date'.ljust(max_expiry_width + 2)}")
+            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)}")
 
             for d in domains[:index]:
                 expiry = certificate_data[d]
@@ -116,26 +118,39 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
                     formatted_date = expiry.strftime("%b %e %Y").replace('  ', ' ')
                     if color == RED:
                         formatted_date = formatted_date.split('-')[0]
-                    # Get IP address for the domain
+
                     ip_address = certificate_data['ip_addresses'].get(d)
                     if ip_address is None:
                         ip_address = socket.gethostbyname(d)
                         certificate_data['ip_addresses'][d] = ip_address
-                    ip_address_display = ip_address.ljust(max_ipv4_width)  # Lengte van het IP-adres aanpassen
-                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
+
+                    ip_address_display = ip_address.ljust(max_ipv4_width)
+
+                    server_name = certificate_data['server_names'].get(d)
+                    if server_name is None:
+                        try:
+                            server_name = socket.gethostbyaddr(ip_address)[0][:max_server_name_width]
+                        except socket.herror:
+                            server_name = 'Unknown'
+
+                        certificate_data['server_names'][d] = server_name
+
+                    server_name_display = server_name.ljust(max_server_name_width)
+
+                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {server_name_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
                 else:
-                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {color}{expiry}{RESET}")
+                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {color}{expiry}{RESET}")
 
         except Exception as e:
-            print(f"{domain.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {RED}Error: {str(e)}{RESET}")
+            print(f"{domain.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {RED}Error: {str(e)}{RESET}")
 
-    # Presenting menu after scanning completes
-    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * (max_expiry_width + 2)}")  # Toevoeging van de scheidingslijn
+    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)}")
+
     sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Exit script\nChoice: ")
     if sort_choice == '1':
         domains.sort(key=lambda x: certificate_data.get(x))
         save_certificate_data(domains, certificate_data)
-        os.system('clear' if os.name == 'posix' else 'cls')  # Clearing the screen after filtering
+        os.system('clear' if os.name == 'posix' else 'cls')
         check_certificates(domains, original_domains, certificate_data)
     elif sort_choice == '2':
         domains[:] = original_domains[:]
@@ -143,7 +158,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
     elif sort_choice == '3':
         sorted_domains = sorted(domains, key=lambda x: certificate_data['ip_addresses'].get(x, ''))
         save_certificate_data(sorted_domains, certificate_data)
-        os.system('clear' if os.name == 'posix' else 'cls')  # Clearing the screen after filtering
+        os.system('clear' if os.name == 'posix' else 'cls')
         check_certificates(sorted_domains, original_domains, certificate_data)
     elif sort_choice == '4':
         print("Exiting the script.")
@@ -155,6 +170,8 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
     else:
         print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, or '4' to exit the script.")
 
+
+
 # Load certificate data from a temporary file if available
 stored_domains, stored_certificate_data = load_certificate_data()
 
@@ -164,7 +181,7 @@ with open('host.list', 'r') as file:
     domains = [domain.strip() for domain in domains]
 
     if stored_domains == domains:
-        update_status(0, len(domains))  # Initial status update
+        update_status(0, len(domains))
         check_certificates(domains, domains, stored_certificate_data)
     else:
         check_certificates(domains)
