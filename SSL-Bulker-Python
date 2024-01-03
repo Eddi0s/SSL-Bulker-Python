@@ -6,6 +6,7 @@ from cryptography import x509
 from urllib.request import ssl
 import OpenSSL
 from datetime import timezone
+import dns.resolver  # Adding the DNS resolver library
 
 # Define colors
 RED = "\033[1;31m"
@@ -27,6 +28,15 @@ def load_certificate_data():
             return data['domains'], data['certificate_data']
     except FileNotFoundError:
         return None, None
+
+# Function to get the first nameserver for a domain
+def get_first_nameserver(domain):
+    try:
+        answers = dns.resolver.resolve(domain, 'NS')
+        first_nameserver = str(answers[0])  # Only the first nameserver
+        return first_nameserver
+    except (dns.resolver.NoAnswer, IndexError):
+        return None
 
 # Function to get certificate expiry using alternative method
 def get_num_days_before_expired(hostname: str, port: str = '443') -> int:
@@ -88,7 +98,7 @@ def sort_by_server_name(domains, certificate_data):
 # Function to check certificates and display domain information
 def check_certificates(domains, original_domains=None, certificate_data=None):
     if certificate_data is None:
-        certificate_data = {'ip_addresses': {}, 'server_names': {}}
+        certificate_data = {'ip_addresses': {}, 'server_names': {}, 'nameservers': {}}  # Updated dictionary to include nameservers
 
     if original_domains is None:
         original_domains = domains[:]
@@ -97,8 +107,9 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
     max_expiry_width = len("Exp Date")
     max_ipv4_width = len("255.255.255.255")
     max_server_name_width = 30  # Nieuwe kolom voor Servernaam
+    max_nameserver_width = 30  # New column width for nameserver
 
-    update_status(0, len(domains))  # Initiële statusupdate
+    update_status(0, len(domains))  # Initial status update
 
     for index, domain in enumerate(domains, start=1):
         try:
@@ -113,8 +124,8 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
             os.system('clear' if os.name == 'posix' else 'cls')
             print(f"Scanning status: {index}/{len(domains)} domains scanned\n")
-            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Server Name'.ljust(max_server_name_width)} {'Exp Date'.ljust(max_expiry_width + 2)}")
-            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)}")
+            print(f"{'Domain'.ljust(max_domain_width)} {'IP Address'.ljust(max_ipv4_width)} {'Server Name'.ljust(max_server_name_width)} {'Exp Date'.ljust(max_expiry_width + 2)} {'Nameserver'.ljust(max_nameserver_width)}")
+            print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)} {'-' * max_nameserver_width}")
 
             for d in domains[:index]:
                 expiry = certificate_data[d]
@@ -143,14 +154,22 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
                     server_name_display = server_name.ljust(max_server_name_width)
 
-                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {server_name_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
+                    nameserver = certificate_data['nameservers'].get(d)
+                    if nameserver is None:
+                        nameserver = get_first_nameserver(d)
+                        certificate_data['nameservers'][d] = nameserver
+
+                    nameserver_display = nameserver if nameserver else 'N/A'
+                    nameserver_display = nameserver_display.ljust(max_nameserver_width)
+
+                    print(f"{d.ljust(max_domain_width)} {ip_address_display} {server_name_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET} {nameserver_display}")
                 else:
-                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {color}{expiry}{RESET}")
+                    print(f"{d.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {color}{expiry}{RESET} {''.ljust(max_nameserver_width)}")
 
         except Exception as e:
             print(f"{domain.ljust(max_domain_width)} {''.ljust(max_ipv4_width)} {''.ljust(max_server_name_width)} {RED}Error: {str(e)}{RESET}")
 
-    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)}")
+    print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * max_server_name_width} {'-' * (max_expiry_width + 2)} {'-' * max_nameserver_width}")
 
     sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Sort by Server Name\n[5] Exit script\nChoice: ")
     if sort_choice == '1':
