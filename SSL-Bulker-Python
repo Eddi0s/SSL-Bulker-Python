@@ -81,7 +81,7 @@ def update_status(domains_scanned, total_domains):
 # Function to check certificates and display domain information
 def check_certificates(domains, original_domains=None, certificate_data=None):
     if certificate_data is None:
-        certificate_data = {}
+        certificate_data = {'ip_addresses': {}}
 
     if original_domains is None:
         original_domains = domains[:]
@@ -117,7 +117,10 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
                     if color == RED:
                         formatted_date = formatted_date.split('-')[0]
                     # Get IP address for the domain
-                    ip_address = socket.gethostbyname(d)
+                    ip_address = certificate_data['ip_addresses'].get(d)
+                    if ip_address is None:
+                        ip_address = socket.gethostbyname(d)
+                        certificate_data['ip_addresses'][d] = ip_address
                     ip_address_display = ip_address.ljust(max_ipv4_width)  # Lengte van het IP-adres aanpassen
                     print(f"{d.ljust(max_domain_width)} {ip_address_display} {color}{formatted_date.ljust(max_expiry_width + 2)}{RESET}")
                 else:
@@ -128,7 +131,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
 
     # Presenting menu after scanning completes
     print(f"{'-' * max_domain_width} {'-' * max_ipv4_width} {'-' * (max_expiry_width + 2)}")  # Toevoeging van de scheidingslijn
-    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Exit script\nChoice: ")
+    sort_choice = input("Make a choice:\n[1] Sort by Exp date\n[2] Sort by Original Order\n[3] Sort by IP Address\n[4] Exit script\nChoice: ")
     if sort_choice == '1':
         domains.sort(key=lambda x: certificate_data.get(x))
         save_certificate_data(domains, certificate_data)
@@ -138,6 +141,11 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
         domains[:] = original_domains[:]
         check_certificates(domains, original_domains, certificate_data)
     elif sort_choice == '3':
+        sorted_domains = sorted(domains, key=lambda x: certificate_data['ip_addresses'].get(x, ''))
+        save_certificate_data(sorted_domains, certificate_data)
+        os.system('clear' if os.name == 'posix' else 'cls')  # Clearing the screen after filtering
+        check_certificates(sorted_domains, original_domains, certificate_data)
+    elif sort_choice == '4':
         print("Exiting the script.")
         try:
             os.remove('temp_cert_data.pkl')
@@ -145,7 +153,7 @@ def check_certificates(domains, original_domains=None, certificate_data=None):
             pass
         exit()
     else:
-        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, or '3' to exit the script.")
+        print("Invalid input. Enter '1' to sort by expiration date, '2' to sort by original order, '3' to sort by IP address, or '4' to exit the script.")
 
 # Load certificate data from a temporary file if available
 stored_domains, stored_certificate_data = load_certificate_data()
